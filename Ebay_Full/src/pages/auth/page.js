@@ -25,7 +25,7 @@ export default function AuthPage() {
 
   // Axios instance
   const api = axios.create({
-    baseURL: "http://localhost:9999",
+    baseURL: "http://localhost:3002",
     headers: {
       "Content-Type": "application/json",
     },
