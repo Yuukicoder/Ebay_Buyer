@@ -38,6 +38,7 @@ export default function Checkout() {
     const [addressId, setAddressId] = useState(null);
     const [isLoading, setIsLoading] = useState(true);
     const location = useLocation();
+    const [paymentMethod, setPaymentMethod] = useState("Paypal"); // mặc định Paypal
 
     const [shippingMethod, setShippingMethod] = useState("standard");
     const shippingRates = {
@@ -136,32 +137,32 @@ export default function Checkout() {
         }
     };
 
-useEffect(() => {
-    const fetchAll = async () => {
-        // Nếu có dữ liệu truyền qua location.state (Buy it now)
-        if (location.state && location.state.items && location.state.items.length > 0) {
-            setCartItems(location.state.items.map(item => ({
-                idProduct: item.id || item._id || item.idProduct,
-                title: item.title,
-                description: item.description || "",
-                // Nếu giá nhỏ hơn 100 thì nhân 100, nếu lớn hơn 100 thì giữ nguyên (đã là pence)
-                price: item.price && item.price > 100 ? item.price : Math.round((item.price || item.buyNowPrice) * 100),
-                url: item.image
-                    ? [item.image]
-                    : (Array.isArray(item.images) ? item.images : (item.images ? [item.images] : (item.url ? [item.url] : []))),
-                quantity: item.quantity || 1,
-                availableStock: item.availableStock || item.stock || 100
-            })));
-            setIsLoading(false);
-            fetchAddressDetails();
-        } else {
-            // Nếu không phải Buy it now thì lấy từ giỏ hàng như cũ
-            await Promise.all([fetchCartItems(), fetchAddressDetails()]);
-        }
-    };
-    fetchAll();
-    // eslint-disable-next-line
-}, [currentUser?._id, location.state]);
+    useEffect(() => {
+        const fetchAll = async () => {
+            // Nếu có dữ liệu truyền qua location.state (Buy it now)
+            if (location.state && location.state.items && location.state.items.length > 0) {
+                setCartItems(location.state.items.map(item => ({
+                    idProduct: item.id || item._id || item.idProduct,
+                    title: item.title,
+                    description: item.description || "",
+                    // Nếu giá nhỏ hơn 100 thì nhân 100, nếu lớn hơn 100 thì giữ nguyên (đã là pence)
+                    price: item.price && item.price > 100 ? item.price : Math.round((item.price || item.buyNowPrice) * 100),
+                    url: item.image
+                        ? [item.image]
+                        : (Array.isArray(item.images) ? item.images : (item.images ? [item.images] : (item.url ? [item.url] : []))),
+                    quantity: item.quantity || 1,
+                    availableStock: item.availableStock || item.stock || 100
+                })));
+                setIsLoading(false);
+                fetchAddressDetails();
+            } else {
+                // Nếu không phải Buy it now thì lấy từ giỏ hàng như cũ
+                await Promise.all([fetchCartItems(), fetchAddressDetails()]);
+            }
+        };
+        fetchAll();
+        // eslint-disable-next-line
+    }, [currentUser?._id, location.state]);
 
     const getCartTotal = () => {
         return cartItems.reduce(
@@ -174,47 +175,96 @@ useEffect(() => {
         return shippingRates[shippingMethod] || 0;
     };
 
-const getOrderTotal = () => {
-    const subtotal = cartItems.reduce((total, item) => total + item.price * item.quantity, 0);
-    const shippingFee = shippingRates[shippingMethod]; // phí ship hiện tại
-    return subtotal + shippingFee;
-};
+    const getOrderTotal = () => {
+        const subtotal = cartItems.reduce((total, item) => total + item.price * item.quantity, 0);
+        const shippingFee = shippingRates[shippingMethod]; // phí ship hiện tại
+        return subtotal + shippingFee;
+    };
 
-const handlePayment = async () => {
-    try {
-        const orderTotal = getOrderTotal();
+    const handlePayment = async () => {
+        try {
+            const orderTotal = getOrderTotal();
 
-        const response = await fetch("http://localhost:9999/orders/create", {
-            method: "POST",
-            headers: {
-                "Content-Type": "application/json",
-                Authorization: `Bearer ${token}`,
-            },
-            body: JSON.stringify({
-                buyerId: currentUser._id,
-                addressId,
-                items: cartItems.map(item => ({
-                    productId: item.idProduct || item.productId || item.id || item._id,
-                    quantity: item.quantity,
-                    price: item.price, // đảm bảo giá được truyền đúng
-                })),
-                shippingMethod, // truyền đúng "standard" hoặc "express"
-                orderTotal: (orderTotal / 100).toFixed(2),
-            }),
-        });
+            const response = await fetch(`${API_BASE_URL}/orders/create`, {
+                method: "POST",
+                headers: {
+                    "Content-Type": "application/json",
+                    Authorization: `Bearer ${token}`,
+                },
+                body: JSON.stringify({
+                    buyerId: currentUser._id,
+                    addressId,
+                    items: cartItems.map(item => ({
+                        productId: item.idProduct || item.productId || item.id || item._id,
+                        quantity: item.quantity,
+                        price: item.price,
+                    })),
+                    shippingMethod, // "standard" hoặc "express"
+                    paymentMethod,  // thêm COD hoặc Paypal
+                    orderTotal: (orderTotal / 100).toFixed(2),
+                }),
+            });
 
-        const result = await response.json();
+            const result = await response.json();
 
-        if (result && result.approvalUrl) {
-            window.location.href = result.approvalUrl;
-        } else {
-            throw new Error(result.message || "Không lấy được đường dẫn PayPal");
+            if (!response.ok) {
+                throw new Error(result.message || "Không thể tạo đơn hàng");
+            }
+
+            if (paymentMethod === "Paypal") {
+                if (result.approvalUrl) {
+                    window.location.href = result.approvalUrl; // phải redirect sang PayPal
+                } else {
+                    throw new Error("Không lấy được đường dẫn PayPal");
+                }
+            } else if (paymentMethod === "COD") {
+                alert("Đặt hàng COD thành công!");
+                localStorage.removeItem("cart");
+                navigate("/"); // về trang chủ sau khi đặt COD
+            }
+
+        } catch (error) {
+            alert("Lỗi khi tạo đơn hàng: " + error.message);
+            console.error(error);
         }
-    } catch (error) {
-        alert("Lỗi khi tạo đơn hàng PayPal: " + error.message);
-        console.error(error);
-    }
-};
+    };
+
+
+    // const handlePayment = async () => {
+    //     try {
+    //         const orderTotal = getOrderTotal();
+
+    //         const response = await fetch("http://localhost:9999/orders/create", {
+    //             method: "POST",
+    //             headers: {
+    //                 "Content-Type": "application/json",
+    //                 Authorization: `Bearer ${token}`,
+    //             },
+    //             body: JSON.stringify({
+    //                 buyerId: currentUser._id,
+    //                 addressId,
+    //                 items: cartItems.map(item => ({
+    //                     productId: item.idProduct || item.productId || item.id || item._id,
+    //                     quantity: item.quantity,
+    //                     price: item.price, // đảm bảo giá được truyền đúng
+    //                 })),
+    //                 shippingMethod, // truyền đúng "standard" hoặc "express"
+    //                 orderTotal: (orderTotal / 100).toFixed(2),
+    //             }),
+    //         });
+
+    //         const result = await response.json();
+
+    //         if (result && result.approvalUrl) {
+    //             window.location.href = result.approvalUrl;
+    //         } else {
+    //             throw new Error(result.message || "Không lấy được đường dẫn PayPal");
+    //         }
+    //     } catch (error) {
+    //         alert("Lỗi khi tạo đơn hàng PayPal: " + error.message);
+    //         console.error(error);
+    //     }
+    // };
 
     if (!isAuthenticated) {
         return (
@@ -316,16 +366,55 @@ const handlePayment = async () => {
                                 </div>
                             </div>
 
-                            <div className="border border-gray-500 p-2 text-center text-gray-500 rounded mb-4">
-                                PayPal Payment
+                            <div className="text-sm mb-4">
+                                <div className="font-medium mb-1">Payment Method</div>
+                                <div className="flex flex-col gap-2">
+                                    <label>
+                                        <input
+                                            type="radio"
+                                            value="Paypal"
+                                            checked={paymentMethod === "Paypal"}
+                                            onChange={(e) => setPaymentMethod(e.target.value)}
+                                        /> Paypal
+                                    </label>
+                                    <label>
+                                        <input
+                                            type="radio"
+                                            value="COD"
+                                            checked={paymentMethod === "COD"}
+                                            onChange={(e) => setPaymentMethod(e.target.value)}
+                                        /> Cash on Delivery (COD)
+                                    </label>
+                                </div>
                             </div>
 
-                            <button
+                            {addressId ?
+                                (<button className="bg-blue-600 text-white w-full py-3 rounded-full font-semibold hover:bg-blue-700"
+                                    onClick={handlePayment} >
+                                    Place Order
+                                </button>
+                                ) : (
+                                    <>
+                                        <button className="bg-gray-400 text-white w-full py-3 rounded-full font-semibold cursor-not-allowed" disabled >
+                                            Place Order
+                                        </button>
+                                        <div className="text-red-500 text-sm mt-2 text-center">
+                                            Don't have any available address. Please add to continue checkout.
+                                        </div>
+                                    </>
+                                )}
+
+
+                            {/* <div className="border border-gray-500 p-2 text-center text-gray-500 rounded mb-4">
+                                PayPal Payment
+                            </div> */}
+
+                            {/* <button
                                 className="bg-blue-600 text-white w-full py-3 rounded-full font-semibold hover:bg-blue-700"
                                 onClick={handlePayment}
                             >
-                                Pay with PayPal
-                            </button>
+                                Check out
+                            </button> */}
 
                             <div className="flex items-center justify-center mt-4 gap-2 border-t pt-4">
                                 <img width={50} src="/images/logo.svg" alt="Logo" />

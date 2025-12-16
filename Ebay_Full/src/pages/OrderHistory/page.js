@@ -26,16 +26,16 @@ export default function OrderHistory() {
     if (!currentUser?._id) {
       return;
     }
-    
+
     try {
       const res = await fetch(`http://localhost:9999/orders/history/${currentUser._id}`);
-      
+
       if (!res.ok) {
         throw new Error('Failed to fetch orders');
       }
-      
+
       const data = await res.json();
-      
+
       if (Array.isArray(data)) {
         setOrders(data);
       } else {
@@ -58,14 +58,14 @@ export default function OrderHistory() {
 
   // Filter orders based on search term and status
   const filteredOrders = orders.filter(order => {
-    const matchesSearch = 
+    const matchesSearch =
       order.id?.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      order.items?.some(item => 
+      order.items?.some(item =>
         item.product?.title?.toLowerCase().includes(searchTerm.toLowerCase())
       );
-    
+
     const matchesStatus = statusFilter === "all" || order.status === statusFilter;
-    
+
     return matchesSearch && matchesStatus;
   });
 
@@ -172,7 +172,7 @@ export default function OrderHistory() {
           <div className="text-center py-20 text-red-500">{error}</div>
         ) : filteredOrders.length === 0 ? (
           <div className="text-center text-gray-600">
-            {searchTerm || statusFilter !== "all" 
+            {searchTerm || statusFilter !== "all"
               ? "Không tìm thấy đơn hàng phù hợp với điều kiện tìm kiếm."
               : "Bạn chưa có đơn hàng nào."}
           </div>
@@ -201,14 +201,14 @@ export default function OrderHistory() {
                   <div className="text-sm text-gray-600 mb-4">
                     <div>
                       <span className="font-semibold">Người nhận:</span>{" "}{order.addressId?.fullName}
-                      <br/>
+                      <br />
                       <span className="font-semibold">Địa chỉ giao hàng:</span>{" "}
                     </div>
                     <div>
-                      {order.addressId?.street }
-                      , {order.addressId?.city }
-                      ,{order.addressId?.state }
-                      , {order.addressId?.country }
+                      {order.addressId?.street}
+                      , {order.addressId?.city}
+                      ,{order.addressId?.state}
+                      , {order.addressId?.country}
                     </div>
                   </div>
 
@@ -247,19 +247,18 @@ export default function OrderHistory() {
                     <div>
                       Trạng thái:{" "}
                       <span
-                        className={`font-medium ${
-                          order.status === "completed"
+                        className={`font-medium ${order.status === "completed"
                             ? "text-green-600"
                             : order.status === "shipping"
-                            ? "text-blue-600"
-                            : order.status === "cancelled"
-                            ? "text-red-600"
-                            : order.status === "return_requested"
-                            ? "text-orange-600"
-                            : order.status === "returned"
-                            ? "text-purple-600"
-                            : "text-gray-600"
-                        }`}
+                              ? "text-blue-600"
+                              : order.status === "cancelled"
+                                ? "text-red-600"
+                                : order.status === "return_requested"
+                                  ? "text-orange-600"
+                                  : order.status === "returned"
+                                    ? "text-purple-600"
+                                    : "text-gray-600"
+                          }`}
                       >
                         {order.status === "shipping" && "Đang giao"}
                         {order.status === "completed" && "Hoàn thành"}
@@ -267,7 +266,18 @@ export default function OrderHistory() {
                         {order.status === "return_requested" && "Yêu cầu hoàn trả"}
                         {order.status === "returned" && "Đã hoàn trả"}
                       </span>
+                      <div className="mt-1">
+                        Phương thức thanh toán:{" "}
+                        <span className="font-medium text-gray-800">
+                          {order.paymentMethod === "COD"
+                            ? "Thanh toán khi nhận hàng (COD)"
+                            : order.paymentMethod === "Paypal"
+                              ? "Thanh toán qua PayPal"
+                              : "Không xác định"}
+                        </span>
+                      </div>
                     </div>
+
                     <div>
                       Tổng tiền:{" "}
                       <span className="font-semibold">
@@ -311,11 +321,10 @@ export default function OrderHistory() {
                   <button
                     key={page}
                     onClick={() => handlePageChange(page)}
-                    className={`px-4 py-2 border rounded-lg ${
-                      currentPage === page
+                    className={`px-4 py-2 border rounded-lg ${currentPage === page
                         ? "bg-blue-500 text-white"
                         : "hover:bg-gray-100"
-                    }`}
+                      }`}
                   >
                     {page}
                   </button>

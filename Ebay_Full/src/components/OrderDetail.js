@@ -34,15 +34,15 @@ export default function OrderDetail({ order, onClose }) {
             </div>
             <div>
               <p className="text-gray-600 mb-1">Trạng thái:</p>
-              <p className={`font-semibold ${
-                order.status === "delivered" ? "text-green-600" :
-                order.status === "processing" ? "text-blue-600" :
-                order.status === "cancelled" ? "text-red-600" :
-                "text-gray-600"
-              }`}>
+              <p className={`font-semibold ${order.status === "delivered" ? "text-green-600" :
+                  order.status === "processing" ? "text-blue-600" :
+                    order.status === "cancelled" ? "text-red-600" :
+                      "text-gray-600"
+                }`}>
                 {order.status}
               </p>
             </div>
+            
             <div>
               <p className="text-gray-600 mb-1">Tổng tiền:</p>
               <p className="font-semibold text-lg text-blue-600">
@@ -60,10 +60,10 @@ export default function OrderDetail({ order, onClose }) {
               <p className="font-medium text-gray-800">
                 {order.addressId?.fullName}
               </p>
-              <p>Số điện thoại: {order.addressId?.phone }</p>
-              <p>Địa chỉ: {order.addressId?.street }</p>
-              <p>Thành phố: {order.addressId?.city }</p>
-              <p>Quốc Gia : {order.addressId?.country }</p>
+              <p>Số điện thoại: {order.addressId?.phone}</p>
+              <p>Địa chỉ: {order.addressId?.street}</p>
+              <p>Thành phố: {order.addressId?.city}</p>
+              <p>Quốc Gia : {order.addressId?.country}</p>
             </div>
           </div>
 
@@ -80,9 +80,9 @@ export default function OrderDetail({ order, onClose }) {
                 >
                   <div className="w-24 h-24 bg-gray-100 rounded-lg flex items-center justify-center flex-shrink-0 border">
                     {item.images?.[0] ? (
-                      <img 
-                        src={item.images[0]} 
-                        alt={item.product_name} 
+                      <img
+                        src={item.images[0]}
+                        alt={item.product_name}
                         className="w-full h-full object-cover rounded-lg"
                       />
                     ) : (
@@ -91,7 +91,7 @@ export default function OrderDetail({ order, onClose }) {
                   </div>
                   <div className="flex-grow">
                     <h4 className="font-medium text-lg mb-2 hover:text-blue-600 cursor-pointer"
-                        onClick={() => navigate(`/product/${item.productId || item.product_id}`)}>
+                      onClick={() => navigate(`/product/${item.productId || item.product_id}`)}>
                       {item.product_name || item.product?.title}
                     </h4>
                     <div className="grid grid-cols-3 gap-4 text-sm text-gray-600">
@@ -114,7 +114,7 @@ export default function OrderDetail({ order, onClose }) {
                 </div>
               ))}
             </div>
-            
+
             {/* Tổng cộng */}
             <div className="border-t p-4 bg-gray-50">
               <div className="flex justify-end items-center gap-4">
