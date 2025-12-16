@@ -43,8 +43,10 @@ const orderSchema = new mongoose.Schema(
       },
     ], paypalOrderId:{
       type:String
-    }
-  
+    },
+
+    paymentMethod: { type: String, enum: ["COD", "Paypal"], required: true, },
+
   },
   {
     timestamps: true,

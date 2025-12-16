@@ -3,6 +3,7 @@ const router = express.Router();
 const db = require("../models");
 const paypal = require('@paypal/checkout-server-sdk');
 const mongoose = require('mongoose');
+const { clearCart } = require("../utils/cart.utils");
 
 const environment = new paypal.core.SandboxEnvironment(
   'ATtgmc45wVQDO2Ddh-5jXzjzOctPod7zKsYNgBF-H_gHkPO-jHpKdOVT4ducL9_fZ7xoXQO7JKTPikDM',
@@ -130,6 +131,7 @@ router.get("/history/:userId", async (req, res) => {
         orderDate: order.orderDate,
         totalPrice: order.totalPrice,
         status: order.status,
+        paymentMethod: order.paymentMethod,
         // Map các orderItems thành format mong muốn
         items: orderItems.map(item => {
           // Xử lý URL ảnh với kích thước
@@ -233,27 +235,27 @@ router.patch("/:id/cancel", async (req, res) => {
   }
 });
 
+
+
 router.post("/create", async (req, res) => {
-  const { buyerId, addressId, items, shippingMethod } = req.body;
+  const { buyerId, addressId, items, shippingMethod, paymentMethod } = req.body;
 
   const feeShipping = shippingMethod === "standard" ? 500 : 1500;
 
   try {
-    if (!buyerId || !addressId || !items || !Array.isArray(items) || items.length === 0) {
+    if (!buyerId || !addressId || !items || !Array.isArray(items) || items.length === 0 || !paymentMethod) {
       throw new Error("Thiếu thông tin đặt hàng");
     }
 
-    // Validate buyerId
-    const buyer = await db.User.findById(buyerId);
-    if (!buyer) {
-      throw new Error("Người mua không tồn tại");
+    if (!["COD", "Paypal"].includes(paymentMethod)) {
+      throw new Error("Phương thức thanh toán không hợp lệ");
     }
 
-    // Validate addressId
+    const buyer = await db.User.findById(buyerId);
+    if (!buyer) throw new Error("Người mua không tồn tại");
+
     const address = await db.Address.findOne({ _id: addressId, userId: buyerId });
-    if (!address) {
-      throw new Error("Địa chỉ không tồn tại hoặc không thuộc về người mua");
-    }
+    if (!address) throw new Error("Địa chỉ không tồn tại hoặc không thuộc về người mua");
 
     const orderItems = await Promise.all(
       items.map(async (item) => {
@@ -262,65 +264,83 @@ router.post("/create", async (req, res) => {
         }
 
         const product = await db.Product.findById(item.productId);
-        if (!product) {
-          throw new Error(`Sản phẩm với ID ${item.productId} không tồn tại`);
-        }
+        if (!product) throw new Error(`Sản phẩm với ID ${item.productId} không tồn tại`);
 
         const unitPrice = typeof item.price === "number" ? item.price : product.price;
 
-        const orderItem = new db.OrderItem({
+        return new db.OrderItem({
           orderId: null,
           productId: new mongoose.Types.ObjectId(item.productId),
           quantity: item.quantity,
-          unitPrice: unitPrice,
+          unitPrice,
         });
-
-        return orderItem;
       })
     );
 
-const totalAmount = items.reduce((acc, item) => acc + item.price * item.quantity, 0);
+    const totalAmount = items.reduce((acc, item) => acc + item.price * item.quantity, 0);
     const totalPrice = ((totalAmount + feeShipping) / 100).toFixed(2);
 
-    const request = new paypal.orders.OrdersCreateRequest();
-    request.prefer("return=representation");
-    request.requestBody({
-      intent: "CAPTURE",
-      application_context: {
-        return_url: `http://localhost:9999/orders/success`,
-        cancel_url: "http://localhost:9999/orders/cancel",
-      },
-      purchase_units: [
-        {
-          amount: {
-            currency_code: "USD",
-            value: ((totalAmount + feeShipping) / 100).toFixed(2), // ĐÃ CỘNG PHÍ SHIP!
-          },
+    let newOrder;
+    let approvalUrl = null;
+
+    if (paymentMethod === "Paypal") {
+      const request = new paypal.orders.OrdersCreateRequest();
+      request.prefer("return=representation");
+      request.requestBody({
+        intent: "CAPTURE",
+        application_context: {
+          return_url: `http://localhost:9999/orders/success`,
+          cancel_url: "http://localhost:9999/orders/cancel",
         },
-      ],
-    });
+        purchase_units: [
+          {
+            amount: {
+              currency_code: "USD",
+              value: totalPrice,
+            },
+          },
+        ],
+      });
 
-    const paypalOrder = await client.execute(request);
+      const paypalOrder = await client.execute(request);
+      if (paypalOrder.statusCode !== 201) throw new Error("Lỗi khi tạo đơn hàng PayPal");
 
-    if (paypalOrder.statusCode !== 201) {
-      throw new Error("Lỗi khi tạo đơn hàng PayPal");
+      newOrder = await db.Order.create({
+        buyerId,
+        addressId,
+        orderDate: new Date(),
+        totalPrice,
+        status: "shipping",
+        paymentMethod,
+        paypalOrderId: paypalOrder.result.id,
+        items: orderItems.map((item) => ({
+          productId: item.productId,
+          quantity: item.quantity,
+          unitPrice: item.unitPrice,
+        })),
+      });
+
+      approvalUrl = paypalOrder.result.links.find((link) => link.rel === "approve").href;
+    } else {
+      // COD
+      newOrder = await db.Order.create({
+        buyerId,
+        addressId,
+        orderDate: new Date(),
+        totalPrice,
+        status: "shipping",
+        paymentMethod,
+        items: orderItems.map((item) => ({
+          productId: item.productId,
+          quantity: item.quantity,
+          unitPrice: item.unitPrice,
+        })),
+      });
+
+      // Xóa giỏ hàng sau khi đặt hàng COD
+      await clearCart(buyerId);
     }
 
-    const newOrder = await db.Order.create({
-      buyerId: new mongoose.Types.ObjectId(buyerId),
-      addressId: new mongoose.Types.ObjectId(addressId),
-      orderDate: new Date(),
-      totalPrice: totalPrice,
-      status: "shipping",
-      paypalOrderId: paypalOrder.result.id,
-      items: orderItems.map((item) => ({
-        productId: item.productId,
-        quantity: item.quantity,
-        unitPrice: item.unitPrice,
-      })),
-    });
-
-    // Lưu các orderItem
     await Promise.all(
       orderItems.map(async (item) => {
         item.orderId = newOrder._id;
@@ -328,21 +348,130 @@ const totalAmount = items.reduce((acc, item) => acc + item.price * item.quantity
       })
     );
 
-    const approvalUrl = paypalOrder.result.links.find(
-      (link) => link.rel === "approve"
-    ).href;
-
     res.status(200).json({
       message: "Đã tạo đơn hàng thành công",
       order_id: newOrder._id,
-      paypal_order_id: paypalOrder.result.id,
-      approvalUrl,
+      ...(paymentMethod === "Paypal" && {
+        paypal_order_id: newOrder.paypalOrderId,
+        approvalUrl,
+      }),
     });
   } catch (error) {
     res.status(500).json({ message: error.message });
-  } finally {
   }
 });
+
+
+// router.post("/create", async (req, res) => {
+//   const { buyerId, addressId, items, shippingMethod } = req.body;
+
+//   const feeShipping = shippingMethod === "standard" ? 500 : 1500;
+
+//   try {
+//     if (!buyerId || !addressId || !items || !Array.isArray(items) || items.length === 0) {
+//       throw new Error("Thiếu thông tin đặt hàng");
+//     }
+
+//     // Validate buyerId
+//     const buyer = await db.User.findById(buyerId);
+//     if (!buyer) {
+//       throw new Error("Người mua không tồn tại");
+//     }
+
+//     // Validate addressId
+//     const address = await db.Address.findOne({ _id: addressId, userId: buyerId });
+//     if (!address) {
+//       throw new Error("Địa chỉ không tồn tại hoặc không thuộc về người mua");
+//     }
+
+//     const orderItems = await Promise.all(
+//       items.map(async (item) => {
+//         if (!item.productId || !item.quantity || item.quantity < 1) {
+//           throw new Error("Thông tin sản phẩm không hợp lệ");
+//         }
+
+//         const product = await db.Product.findById(item.productId);
+//         if (!product) {
+//           throw new Error(`Sản phẩm với ID ${item.productId} không tồn tại`);
+//         }
+
+//         const unitPrice = typeof item.price === "number" ? item.price : product.price;
+
+//         const orderItem = new db.OrderItem({
+//           orderId: null,
+//           productId: new mongoose.Types.ObjectId(item.productId),
+//           quantity: item.quantity,
+//           unitPrice: unitPrice,
+//         });
+
+//         return orderItem;
+//       })
+//     );
+
+// const totalAmount = items.reduce((acc, item) => acc + item.price * item.quantity, 0);
+//     const totalPrice = ((totalAmount + feeShipping) / 100).toFixed(2);
+
+//     const request = new paypal.orders.OrdersCreateRequest();
+//     request.prefer("return=representation");
+//     request.requestBody({
+//       intent: "CAPTURE",
+//       application_context: {
+//         return_url: `http://localhost:9999/orders/success`,
+//         cancel_url: "http://localhost:9999/orders/cancel",
+//       },
+//       purchase_units: [
+//         {
+//           amount: {
+//             currency_code: "USD",
+//             value: ((totalAmount + feeShipping) / 100).toFixed(2), // ĐÃ CỘNG PHÍ SHIP!
+//           },
+//         },
+//       ],
+//     });
+
+//     const paypalOrder = await client.execute(request);
+
+//     if (paypalOrder.statusCode !== 201) {
+//       throw new Error("Lỗi khi tạo đơn hàng PayPal");
+//     }
+
+//     const newOrder = await db.Order.create({
+//       buyerId: new mongoose.Types.ObjectId(buyerId),
+//       addressId: new mongoose.Types.ObjectId(addressId),
+//       orderDate: new Date(),
+//       totalPrice: totalPrice,
+//       status: "shipping",
+//       paypalOrderId: paypalOrder.result.id,
+//       items: orderItems.map((item) => ({
+//         productId: item.productId,
+//         quantity: item.quantity,
+//         unitPrice: item.unitPrice,
+//       })),
+//     });
+
+//     // Lưu các orderItem
+//     await Promise.all(
+//       orderItems.map(async (item) => {
+//         item.orderId = newOrder._id;
+//         await item.save();
+//       })
+//     );
+
+//     const approvalUrl = paypalOrder.result.links.find(
+//       (link) => link.rel === "approve"
+//     ).href;
+
+//     res.status(200).json({
+//       message: "Đã tạo đơn hàng thành công",
+//       order_id: newOrder._id,
+//       paypal_order_id: paypalOrder.result.id,
+//       approvalUrl,
+//     });
+//   } catch (error) {
+//     res.status(500).json({ message: error.message });
+//   } finally {
+//   }
+// });
 
 router.get("/success", async (req, res) => {
   const { token, PayerID } = req.query;
