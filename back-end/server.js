@@ -15,6 +15,7 @@ const reviewRouter = require("./routes/review.route");
 const couponRouter = require("./routes/coupon.route");
 const addressRoutes = require("./routes/addressRoutes");
 const cartRouter = require("./routes/cartRoutes");
+const userRoutes = require("./routes/userRoutes")
 const app = express();
 app.use(bodyParser.json());
 app.use(morgan("dev"));
@@ -47,6 +48,8 @@ app.use("/orders", orderRoutes);
 app.use("/returns", returnRoutes);
 app.use("/address", addressRoutes);
 app.use("/cart", cartRouter);
+app.use("/user", userRoutes);
+
 // Error handling
 app.use('/notifications', notificationRoutes);
 app.use(async (req, res, next) => {

@@ -9,9 +9,13 @@ const auth = (req, res, next) => {
     jwt.verify(token, process.env.JWT_SECRET, (err, decoded) => {
       if (err) return res.status(403).json({ message: 'Invalid token' });
       
-      req.userId = decoded.id || decoded._id || decoded.userId;
-      console.log('Auth middleware set userId:', req.userId);
-      next();
+     req.user = {
+      id: decoded.id || decoded._id || decoded.userId,
+      role: decoded.role,
+      email: decoded.email,
+     }
+     console.log("Auth user: ", req.user);
+     next();
     });
   } catch (error) {
     console.error('Auth middleware error:', error);

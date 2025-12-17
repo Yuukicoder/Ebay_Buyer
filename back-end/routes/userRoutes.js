@@ -6,7 +6,7 @@ const {
   updateUser,
   deleteUser,
   updateUserStatus,
-} = require("../controller/userController");
+} = require("../controllers/userController");
 const verifyToken = require("../middlewares/verifyToken");
 const { body, validationResult } = require("express-validator");
 

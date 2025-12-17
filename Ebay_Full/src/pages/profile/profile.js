@@ -2,7 +2,7 @@ import React, { useEffect, useState } from "react";
 import TopMenu from "../../components/TopMenu";
 import MainHeader from "../../components/MainHeader";
 import Footer from "../../components/Footer";
-import { Link } from "react-router-dom";
+import { Link, useNavigate } from "react-router-dom";
 import { Bookmark, ChevronDown, ChevronUp } from "lucide-react";
 import {
   FiTrash2,
@@ -38,9 +38,9 @@ function Profile() {
   const [toast, setToast] = useState({ show: false, message: "", type: "" });
   const [loading, setLoading] = useState(false);
   const [activeSection, setActiveSection] = useState("personal");
-
+  const navigate = useNavigate();
   const api = axios.create({
-    baseURL: "http://localhost:9999/",
+    baseURL: "http://localhost:3002/",
     headers: {
       "Content-Type": "application/json",
     },
@@ -48,18 +48,27 @@ function Profile() {
   });
 
   useEffect(() => {
-    const storedUser = localStorage.getItem("currentUser");
-    if (storedUser) {
-      const parsedUser = JSON.parse(storedUser);
-      setUser(parsedUser);
-      setFormData({
-        username: parsedUser.username || "",
-        role: parsedUser.role || "user",
-        avatarURL: parsedUser.avatarURL || "",
-      });
-      fetchAddresses(parsedUser._id);
-    }
-  }, []);
+  const storedUser = localStorage.getItem("currentUser");
+  const token = localStorage.getItem("token");
+
+  if (!storedUser || !token || storedUser === "undefined") {
+    navigate("/auth");
+    return;
+  }
+
+  const parsedUser = JSON.parse(storedUser);
+  setUser(parsedUser);
+
+  setFormData({
+    username: parsedUser.username || "",
+    role: parsedUser.role || "user",
+    avatarURL: parsedUser.avatarURL || "",
+  });
+
+  // 👉 CHỈ fetch address khi có token
+  fetchAddresses(parsedUser._id);
+}, [navigate]);
+
 
   const fetchAddresses = async (userId) => {
     try {
@@ -111,11 +120,12 @@ function Profile() {
         payload.role = updatedUser.role;
       }
 
-      const response = await api.put(`/user/${updatedUser._id}`, payload, {
+      const response = await api.put(`/${updatedUser._id}`, payload, {
         headers: { Authorization: `Bearer ${token}` },
       });
+      console.log("update user response: ", response.data);
 
-      return response.data.user;
+      return response.data;
     } catch (error) {
       if (error.response) {
         if (error.response.status === 401) {
@@ -260,9 +270,13 @@ function Profile() {
     setLoading(true);
     try {
       const updatedUser = { ...user, ...formData };
-      const savedUser = await updateUserInDatabase(updatedUser);
-      setUser(savedUser);
-      localStorage.setItem("currentUser", JSON.stringify(savedUser));
+     const savedUser = await updateUserInDatabase(updatedUser);
+
+if (!savedUser?._id) {
+  throw new Error("Dữ liệu user không hợp lệ");
+}
+setUser(savedUser);
+localStorage.setItem("currentUser", JSON.stringify(savedUser));
       setEditing(false);
       showToast("Cập nhật thông tin thành công!", "success");
     } catch (error) {

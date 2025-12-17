@@ -106,6 +106,7 @@ export default function AuthPage() {
           console.log(`Verification successful for ${formData.email}`);
 
           // Store token and user data
+          
           localStorage.setItem("token", token);
           localStorage.setItem("currentUser", JSON.stringify(user));
 
